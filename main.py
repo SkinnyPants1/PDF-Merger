@@ -1,12 +1,17 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QFileDialog, QMessageBox, QProgressBar, QVBoxLayout, QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem
-from PyPDF2 import PdfMerger  # Pastikan Anda menggunakan PdfMerger dari PyPDF2
-from PyQt5.QtCore import pyqtSignal, QThread
+from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
+                             QFileDialog, QMessageBox, QProgressBar, QVBoxLayout,
+                             QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
+                             QScrollArea)
+from PyPDF2 import PdfMerger
+from PyQt5.QtCore import pyqtSignal, QThread, Qt
 import os
 import qdarktheme
+import fitz
+from PyQt5.QtGui import QPixmap, QImage
 
 class PdfMergeThread(QThread):
-    finished = pyqtSignal(str)  # Emit string untuk pesan hasil
+    finished = pyqtSignal(str)
 
     def __init__(self, files, target_file):
         super().__init__()
@@ -15,11 +20,11 @@ class PdfMergeThread(QThread):
 
     def run(self):
         try:
-            merger = PdfMerger()  # Buat instance PdfMerger
+            merger = PdfMerger()
             for file in self.files:
-                merger.append(file)  # Tambahkan setiap file PDF
-            merger.write(self.target_file)  # Tulis ke file target
-            merger.close()  # Tutup merger
+                merger.append(file)
+            merger.write(self.target_file)
+            merger.close()
             self.finished.emit("Udah digabung semua yak.")
         except Exception as e:
             self.finished.emit(f"Ada yang salah brok: {str(e)}")
@@ -30,8 +35,8 @@ class PdfMergerApp(QWidget):
 
         # Inisialisasi komponen UI
         self.add_file_button = QPushButton("Pilih File PDF")
-        self.file_list_widget = QListWidget()  # Ganti QLabel dengan QListWidget
-        self.file_paths = []  # List untuk menyimpan path file
+        self.file_list_widget = QListWidget()
+        self.file_paths = []
 
         # Label
         self.label3 = QLabel("Lokasi Penyimpanan:")
@@ -42,69 +47,85 @@ class PdfMergerApp(QWidget):
         self.filename_input = QLineEdit()
         self.ulang = QPushButton("Restart")
 
-        # Baris 1
-        layout = QVBoxLayout()
+        # Layout
+        main_layout = QHBoxLayout()  # Layout utama menjadi horizontal
+
+        # Layout sebelah kiri untuk kontrol
+        left_layout = QVBoxLayout()
+
         hbox2 = QHBoxLayout()
-        hbox2.addWidget(self.add_file_button) # Tambahkan button "Pilih File PDF" ke layout
-        hbox2.addWidget(self.ulang) # Tambahkan button "Restart" ke layout
-        layout.addLayout(hbox2)
+        hbox2.addWidget(self.add_file_button)
+        hbox2.addWidget(self.ulang)
+        left_layout.addLayout(hbox2)
 
-        # Baris 2
         hbox3 = QHBoxLayout()
-        hbox3.addWidget(self.label3) # Tambahkan label "Lokasi Penyimpanan:" ke layout
-        hbox3.addWidget(self.button3) # Tambahkan button "Pilih" ke layout
-        layout.addLayout(hbox3)
+        hbox3.addWidget(self.label3)
+        hbox3.addWidget(self.button3)
+        left_layout.addLayout(hbox3)
 
-        # Baris 3
         filename_layout = QHBoxLayout()
-        filename_layout.addWidget(self.label_filename) # Tambahkan label "Nama File:" ke layout
-        filename_layout.addWidget(self.filename_input) # Tambahkan input nama file ke layout
-        layout.addLayout(filename_layout)
+        filename_layout.addWidget(self.label_filename)
+        filename_layout.addWidget(self.filename_input)
+        left_layout.addLayout(filename_layout)
 
-        # Baris 4
-        layout.addWidget(self.merge_button) # Tambahkan button "Gabungkan" ke layout
+        left_layout.addWidget(self.merge_button)
+        left_layout.addWidget(self.file_list_widget)
+        left_layout.addWidget(self.progress_bar)
 
-        # Baris 5
-        layout.addWidget(self.file_list_widget)  # Box layout untuk menampilkan file yang dipilih
+        main_layout.addLayout(left_layout)
 
-        # Baris 6
-        layout.addWidget(self.progress_bar) # Tambahkan progress bar ke layout
+        # Layout sebelah kanan untuk preview
+        right_layout = QVBoxLayout()
 
-        self.setLayout(layout)
+        # Tambahkan QScrollArea untuk preview
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_widget = QWidget()
+        self.scroll_layout = QVBoxLayout()
+        self.scroll_widget.setLayout(self.scroll_layout)
+        self.scroll_area.setWidget(self.scroll_widget)
+        right_layout.addWidget(self.scroll_area)
+
+        main_layout.addLayout(right_layout)
+
+        self.setLayout(main_layout)
+
+        # Mengaktifkan drag-and-drop
+        self.file_list_widget.setDragEnabled(True)
+        self.file_list_widget.setAcceptDrops(True)
+        self.file_list_widget.setDropIndicatorShown(True)
+        self.file_list_widget.setDragDropMode(QListWidget.InternalMove)
 
         # Koneksi sinyal dan slot
-        self.add_file_button.clicked.connect(self.add_file) # Koneksi button "Pilih File PDF" ke slot "add_file"
-        self.button3.clicked.connect(self.choose_target) # Koneksi button "Pilih" ke slot "choose_target"
-        self.merge_button.clicked.connect(self.merge_pdf) # Koneksi button "Gabungkan" ke slot "merge_pdf"
-        self.ulang.clicked.connect(self.hapus) # Koneksi button "Restart" ke slot "hapus"
+        self.add_file_button.clicked.connect(self.add_file)
+        self.button3.clicked.connect(self.choose_target)
+        self.merge_button.clicked.connect(self.merge_pdf)
+        self.ulang.clicked.connect(self.hapus)
+        self.file_list_widget.model().rowsMoved.connect(self.update_file_paths)
+        self.file_list_widget.itemDoubleClicked.connect(self.remove_file)
 
         self.target_path = ""
 
     def add_file(self):
         file_dialog = QFileDialog()
         file_dialog.setNameFilter("PDF files (*.pdf)")
-        file_dialog.setFileMode(QFileDialog.ExistingFiles)  # Allow multiple file selection
+        file_dialog.setFileMode(QFileDialog.ExistingFiles)
         if file_dialog.exec_():
             selected_files = file_dialog.selectedFiles()
             self.add_file_button.setText("Tambah File PDF")
             for file in selected_files:
                 self.file_paths.append(file)
-                self.create_file_row(file)  # Create a row for the selected file
-
-    def create_file_row(self, file):
-        item = QListWidgetItem(os.path.basename(file))  # Create a list item for the file name
-        item.setData(1, file)  # Store the full path in the item data
-        self.file_list_widget.addItem(item)  # Add item to QListWidget
-
-        # Add a deletebutton to remove the file from the list
-        delete_button = QPushButton("                                                               Hapus")
-        delete_button.clicked.connect(lambda: self.remove_file(item))
-        self.file_list_widget.setItemWidget(item, delete_button)  # Set the delete button as the widget for the item
+                item = QListWidgetItem(os.path.basename(file))
+                item.setData(1, file)
+                self.file_list_widget.addItem(item)
+            self.update_preview()
 
     def remove_file(self, item):
-        row = self.file_list_widget.row(item)  # Get the row of the item
-        self.file_list_widget.takeItem(row)  # Remove the item from the list
-        self.file_paths.pop(row)  # Remove the corresponding file path from the list
+        row = self.file_list_widget.row(item)
+        if row >= 0:
+            self.file_list_widget.takeItem(row)
+            self.file_paths.pop(row)
+            self.update_preview()
 
     def choose_target(self):
         folder_dialog = QFileDialog()
@@ -116,15 +137,18 @@ class PdfMergerApp(QWidget):
     def merge_pdf(self):
         filename = self.filename_input.text()
         if not filename:
-            QMessageBox.warning(self, "WOY WOY WOY!", "Kasih nama filenya dulu dong bang.")
+            QMessageBox.warning(self, "WOY WOY WOY!",
+                                "Kasih nama filenya dulu dong bang.")
             return
 
         if not self.file_paths:
-            QMessageBox.warning(self, "WOOOOYYYY!", "Yakali apa yang mau digabungin bang?")
+            QMessageBox.warning(self, "WOOOOYYYY!",
+                                "Yakali apa yang mau digabungin bang?")
             return
-        
+
         if len(self.file_paths) < 2:
-            QMessageBox.warning(self, "WOOOOYYYY!", "Yakali cuma satu doang bang filenya.")
+            QMessageBox.warning(self, "WOOOOYYYY!",
+                                "Yakali cuma satu doang bang filenya.")
             return
 
         self.target_file = os.path.join(self.target_path, filename + ".pdf")
@@ -135,24 +159,62 @@ class PdfMergerApp(QWidget):
         self.thread.start()
 
     def hapus(self):
-        self.file_list_widget.clear()  # Menghapus semua item dari QListWidget
-        self.file_paths.clear()  # Reset list path file
+        self.file_list_widget.clear()
+        self.file_paths.clear()
+        self.update_preview()
 
     def on_finished(self, message):
         self.progress_bar.setValue(100)
         QMessageBox.information(self, "Done!", message)
 
-        self.hapus()  # Menghapus semua item dari QListWidget
-        self.add_file_button.setText("Pilih File PDF")  # Reset tombol tambah file
-        self.button3.setText("Pilih")  # Reset tombol lokasi penyimpanan
-        self.filename_input.clear()  # Kosongkan input nama file
-        self.progress_bar.setValue(0)  # Reset progress bar
+        self.hapus()
+        self.add_file_button.setText("Pilih File PDF")
+        self.button3.setText("Pilih")
+        self.filename_input.clear()
+        self.progress_bar.setValue(0)
+
+    def update_file_paths(self):
+        new_order = []
+        for i in range(self.file_list_widget.count()):
+            item = self.file_list_widget.item(i)
+            new_order.append(item.data(1))
+        self.file_paths = new_order
+        self.update_preview()
+
+    def update_preview(self):
+        # Hapus semua preview yang ada
+        for i in reversed(range(self.scroll_layout.count())):
+            self.scroll_layout.itemAt(i).widget().setParent(None)
+
+        if not self.file_paths:
+            return
+
+        try:
+            for file_idx, file_path in enumerate(self.file_paths, start=1):
+                doc = fitz.open(file_path)
+                for page_idx, page in enumerate(doc, start=1):
+                    pix = page.get_pixmap()
+                    img = QImage(pix.samples, pix.width, pix.height,
+                                 pix.stride, QImage.Format_RGB888)
+                    pixmap = QPixmap.fromImage(img)
+
+                    # Tambahkan label untuk nama file dan nomor halaman
+                    label_filename = QLabel(
+                        f"File {file_idx}: {os.path.basename(file_path)} - Halaman {page_idx}"
+                    )
+                    self.scroll_layout.addWidget(label_filename)
+
+                    label = QLabel()
+                    label.setPixmap(pixmap)
+                    self.scroll_layout.addWidget(label)
+
+        except Exception as e:
+            print(f"Error saat menampilkan preview: {e}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     qdarktheme.setup_theme("auto")
     window = PdfMergerApp()
-    window.setWindowTitle("Alat Penggabung PDF!")  # judul software
-    window.setFixedSize(800,700)
+    window.setWindowTitle("Alat Penggabung PDF!")
     window.show()
     sys.exit(app.exec_())
