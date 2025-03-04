@@ -4,7 +4,7 @@ import sys
 import fitz
 import qdarktheme
 from PyPDF2 import PdfMerger
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
     QScrollArea,
     QVBoxLayout,
     QWidget,
+    QSplitter
 )
 
 
@@ -91,8 +92,6 @@ class PdfMergerApp(QWidget):
 
         left_layout.addWidget(self.catatan)
 
-        main_layout.addLayout(left_layout)
-
         # Layout sebelah kanan untuk preview
         right_layout = QVBoxLayout()
 
@@ -105,7 +104,17 @@ class PdfMergerApp(QWidget):
         self.scroll_area.setWidget(self.scroll_widget)
         right_layout.addWidget(self.scroll_area)
 
-        main_layout.addLayout(right_layout)
+        # Tambahkan splitter
+        splitter = QSplitter(Qt.Horizontal)
+        left_widget = QWidget()
+        left_widget.setLayout(left_layout)
+        right_widget = QWidget()
+        right_widget.setLayout(right_layout)
+
+        splitter.addWidget(left_widget)
+        splitter.addWidget(right_widget)
+
+        main_layout.addWidget(splitter)
 
         self.setLayout(main_layout)
 
