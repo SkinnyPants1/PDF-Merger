@@ -1,14 +1,27 @@
-import sys
-from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QPushButton,
-                             QFileDialog, QMessageBox, QProgressBar, QVBoxLayout,
-                             QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem,
-                             QScrollArea)
-from PyPDF2 import PdfMerger
-from PyQt5.QtCore import pyqtSignal, QThread, Qt
 import os
-import qdarktheme
+import sys
+
 import fitz
-from PyQt5.QtGui import QPixmap, QImage
+import qdarktheme
+from PyPDF2 import PdfMerger
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
+
 
 class PdfMergeThread(QThread):
     finished = pyqtSignal(str)
@@ -29,6 +42,7 @@ class PdfMergeThread(QThread):
         except Exception as e:
             self.finished.emit(f"Ada yang salah brok: {str(e)}")
 
+
 class PdfMergerApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -46,6 +60,9 @@ class PdfMergerApp(QWidget):
         self.label_filename = QLabel("Nama File:")
         self.filename_input = QLineEdit()
         self.ulang = QPushButton("Restart")
+        self.catatan = QLabel(
+            "Note : \nKlik 2x untuk menghapus file \nDrag untuk menyesuaikan urutan file"
+        )
 
         # Layout
         main_layout = QHBoxLayout()  # Layout utama menjadi horizontal
@@ -72,6 +89,8 @@ class PdfMergerApp(QWidget):
         left_layout.addWidget(self.file_list_widget)
         left_layout.addWidget(self.progress_bar)
 
+        left_layout.addWidget(self.catatan)
+
         main_layout.addLayout(left_layout)
 
         # Layout sebelah kanan untuk preview
@@ -79,9 +98,9 @@ class PdfMergerApp(QWidget):
 
         # Tambahkan QScrollArea untuk preview
         self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
         self.scroll_widget = QWidget()
         self.scroll_layout = QVBoxLayout()
+        self.scroll_area.setWidgetResizable(True)
         self.scroll_widget.setLayout(self.scroll_layout)
         self.scroll_area.setWidget(self.scroll_widget)
         right_layout.addWidget(self.scroll_area)
@@ -137,18 +156,21 @@ class PdfMergerApp(QWidget):
     def merge_pdf(self):
         filename = self.filename_input.text()
         if not filename:
-            QMessageBox.warning(self, "WOY WOY WOY!",
-                                "Kasih nama filenya dulu dong bang.")
+            QMessageBox.warning(
+                self, "WOY WOY WOY!", "Kasih nama filenya dulu dong bang."
+            )
             return
 
         if not self.file_paths:
-            QMessageBox.warning(self, "WOOOOYYYY!",
-                                "Yakali apa yang mau digabungin bang?")
+            QMessageBox.warning(
+                self, "WOOOOYYYY!", "Yakali apa yang mau digabungin bang?"
+            )
             return
 
         if len(self.file_paths) < 2:
-            QMessageBox.warning(self, "WOOOOYYYY!",
-                                "Yakali cuma satu doang bang filenya.")
+            QMessageBox.warning(
+                self, "WOOOOYYYY!", "Yakali cuma satu doang bang filenya."
+            )
             return
 
         self.target_file = os.path.join(self.target_path, filename + ".pdf")
@@ -194,8 +216,13 @@ class PdfMergerApp(QWidget):
                 doc = fitz.open(file_path)
                 for page_idx, page in enumerate(doc, start=1):
                     pix = page.get_pixmap()
-                    img = QImage(pix.samples, pix.width, pix.height,
-                                 pix.stride, QImage.Format_RGB888)
+                    img = QImage(
+                        pix.samples,
+                        pix.width,
+                        pix.height,
+                        pix.stride,
+                        QImage.Format_RGB888,
+                    )
                     pixmap = QPixmap.fromImage(img)
 
                     # Tambahkan label untuk nama file dan nomor halaman
@@ -211,10 +238,12 @@ class PdfMergerApp(QWidget):
         except Exception as e:
             print(f"Error saat menampilkan preview: {e}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     qdarktheme.setup_theme("auto")
     window = PdfMergerApp()
     window.setWindowTitle("Alat Penggabung PDF!")
+    window.resize(1350, 800)
     window.show()
     sys.exit(app.exec_())
